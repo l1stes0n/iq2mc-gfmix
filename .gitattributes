@@ -1,0 +1,19 @@
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.ctl text eol=lf
+*.patch text eol=lf
+*.nwk text eol=lf
+*.phy text eol=lf
+*.fa text eol=lf
+*.txt text eol=lf
+
+third_party/iqtree3/bin/iqtree3 binary
+third_party/paml-iq2mc/bin/mcmctree binary
+third_party/paml-iq2mc/bin/mcmctree-nonrev binary
+third_party/gfmixf/gfmix_lnl_align binary
+third_party/gfmixf/treecns binary
+third_party/gfmixf/rert binary
+workflow/mcmctree.ctl linguist-detectable=false

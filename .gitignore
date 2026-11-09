@@ -1,0 +1,7 @@
+results/
+*.ckp
+*.ckp.gz
+FigTree.tre
+SeedUsed
+__pycache__/
+*.pyc
