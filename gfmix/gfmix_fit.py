@@ -121,13 +121,22 @@ def main(argv=None):
     fit_cmd = [gfmix, "-s", seqfile, "-c", str(a.classes + 1),
                "-f", os.path.join(d, "freq.dat"), "-u", start_u, "-g", gpfile,
                "-w", start_w, "-a", start_a,
-               "-e", "9", "-o", "6", "-b", str(a.threads), "-x", param]
+               "-e", "9", "-o", "6", "-b", str(a.threads), "-p", "1", "-x", param]
     if start_m:
         fit_cmd += ["-m", start_m]
-    fit = subprocess.run(fit_cmd, capture_output=True, text=True)
-    if fit.returncode != 0 or not os.path.exists(param):
-        raise SystemExit("GFmixF fit failed: " + (fit.stdout + fit.stderr)[-500:])
-    nums = [x for x in fit.stdout.split() if re.fullmatch(r"[-+0-9.eE]+", x)]
+    trace_path = os.path.join(d, "fit_trace.log")
+    lines = []
+    with open(trace_path, "w", encoding="utf-8") as trace:
+        proc = subprocess.Popen(fit_cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True, bufsize=1)
+        for line in proc.stdout:
+            trace.write(line)
+            trace.flush()
+            lines.append(line)
+        rc = proc.wait()
+    if rc != 0 or not os.path.exists(param):
+        raise SystemExit("GFmixF fit failed: " + "".join(lines)[-500:])
+    nums = [x for x in "".join(lines).split() if re.fullmatch(r"[-+0-9.eE]+", x)]
     lnl = float(nums[-1]) if nums else float("nan")
     p = read_param(param, m, a.classes + 1)
     theta = p["theta"]
