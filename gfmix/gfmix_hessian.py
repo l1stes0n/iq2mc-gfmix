@@ -1,21 +1,59 @@
 """Gradient and Hessian of the GFmixF log-likelihood at the ML fit."""
 
 import argparse
+import concurrent.futures
 import os
+import shutil
+import subprocess
 import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from gfmix_common import (lnl_eval, read_param, theta_utreec, write_mfile,
-                          write_utreec, write_weights)
+from gfmix_common import (read_param, theta_utreec, write_mfile, write_utreec,
+                          write_weights)
+
+
+def run_engine(bin_path, seqfile, freq, gpfile, nclass, utfile, alpha, wtfile, mfile, deriv):
+    cmd = [bin_path, "-s", seqfile, "-c", str(nclass), "-f", freq, "-g", gpfile,
+           "-e", "9", "-u", utfile, "-a", "%.17g" % alpha, "-w", wtfile,
+           "-m", mfile, "-n", str(deriv)]
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        raise SystemExit("gfmix_lnl_align failed: " + (out.stdout + out.stderr)[-500:])
+    return out.stdout
+
+
+def parse_lnl(text):
+    vals = [x for x in text.split() if x.replace(".", "").replace("-", "").replace("+", "")
+            .replace("e", "").replace("E", "").isdigit()]
+    return float(vals[-1])
+
+
+def parse_gradient(text, p):
+    lines = text.splitlines()
+    i0 = next((i for i, ln in enumerate(lines) if "Edge Length Derivatives" in ln), None)
+    if i0 is None:
+        raise SystemExit("no gradient table in engine output")
+    grad = [None] * p
+    for ln in lines[i0 + 1:]:
+        fld = ln.split()
+        if len(fld) == 3 and fld[0].lstrip("+-").isdigit():
+            e = int(fld[0])
+            if 0 <= e < p:
+                grad[e] = float(fld[2])
+    if any(g is None for g in grad):
+        raise SystemExit("incomplete gradient table in engine output")
+    return grad
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fit-dir", required=True)
     ap.add_argument("--gfmixf-dir", required=True)
+    ap.add_argument("--hessian-mode", choices=["numeric", "analytic"], default="numeric")
     ap.add_argument("--h-rel", type=float, default=1e-4)
+    ap.add_argument("--jobs", type=int, default=1)
     a = ap.parse_args()
     d = a.fit_dir
     nclass = sum(1 for ln in open(os.path.join(d, "freq.dat"), encoding="utf-8") if ln.strip())
@@ -29,54 +67,142 @@ def main():
     write_utreec(utfile, ut)
     write_weights(os.path.join(d, "eval.wtc"), param["weights"])
     write_mfile(os.path.join(d, "eval.mfile"), param["gammas"])
-    args = dict(bin_path=os.path.join(a.gfmixf_dir, "gfmix_lnl_align"),
-                seqfile=os.path.join(d, "eval.seqfile"),
-                freq=os.path.join(d, "freq.dat"),
-                gpfile=os.path.join(d, "eval.gpfile"),
-                nclass=nclass, utreec_path=utfile, alpha=param["alpha"],
-                wtfile=os.path.join(d, "eval.wtc"), mfile=os.path.join(d, "eval.mfile"))
+    engine = os.path.join(a.gfmixf_dir, "gfmix_lnl_align")
+    seqfile = os.path.join(d, "eval.seqfile")
+    freq = os.path.join(d, "freq.dat")
+    gpfile = os.path.join(d, "eval.gpfile")
+    wtfile = os.path.join(d, "eval.wtc")
+    mfile = os.path.join(d, "eval.mfile")
 
     def f(th):
         write_utreec(utfile, theta_utreec(ut, th))
-        return lnl_eval(**args)
+        text = run_engine(engine, seqfile, freq, gpfile, nclass, utfile, param["alpha"],
+                          wtfile, mfile, 0)
+        return parse_lnl(text)
+
+    def g(th):
+        write_utreec(utfile, theta_utreec(ut, th))
+        text = run_engine(engine, seqfile, freq, gpfile, nclass, utfile, param["alpha"],
+                          wtfile, mfile, 1)
+        return parse_lnl(text), parse_gradient(text, p)
 
     t0 = time.time()
-    lnl0 = f(theta)
     h = [a.h_rel * abs(x) for x in theta]
     h = [x if x >= 1e-6 else 1e-6 for x in h]
-    grad = [0.0] * p
-    for i in range(p):
-        hi = h[i]
-        tp = list(theta); tp[i] += hi
-        tm = list(theta); tm[i] -= hi
-        grad[i] = (f(tp) - f(tm)) / (2 * hi)
-    hess = [[0.0] * p for _ in range(p)]
-    for i in range(p):
-        hi = h[i]
-        tp = list(theta); tp[i] += hi
-        tm = list(theta); tm[i] -= hi
-        hess[i][i] = (f(tp) - 2 * lnl0 + f(tm)) / (hi * hi)
-    for i in range(p):
-        for j in range(i + 1, p):
-            hi, hj = h[i], h[j]
+    if a.hessian_mode == "numeric":
+        eval_dir = os.path.join(d, "hessian_eval")
+        os.makedirs(eval_dir, exist_ok=True)
+        base_path = os.path.join(eval_dir, "ut_base.utreec")
+
+        def f_at(th, path):
+            write_utreec(path, theta_utreec(ut, th))
+            text = run_engine(engine, seqfile, freq, gpfile, nclass, path, param["alpha"],
+                              wtfile, mfile, 0)
+            return parse_lnl(text)
+
+        def column_task(i):
+            path = os.path.join(eval_dir, "ut_col_%d.utreec" % i)
+            hi = h[i]
+            tp = list(theta); tp[i] += hi
+            tm = list(theta); tm[i] -= hi
+            fp = f_at(tp, path)
+            fm = f_at(tm, path)
+            grad_i = (fp - fm) / (2 * hi)
+            diag = (fp - 2 * lnl0 + fm) / (hi * hi)
+            row = []
+            for j in range(i + 1, p):
+                hj = h[j]
+                th = list(theta); th[i] += hi; th[j] += hj; fpp = f_at(th, path)
+                th = list(theta); th[i] += hi; th[j] -= hj; fpm = f_at(th, path)
+                th = list(theta); th[i] -= hi; th[j] += hj; fmp = f_at(th, path)
+                th = list(theta); th[i] -= hi; th[j] -= hj; fmm = f_at(th, path)
+                row.append((j, (fpp - fpm - fmp + fmm) / (4 * hi * hj)))
+            return i, grad_i, diag, row
+
+        lnl0 = f_at(theta, base_path)
+        grad = [0.0] * p
+        hess = [[0.0] * p for _ in range(p)]
+        done = 0
+        step = max(1, p // 10)
+        if a.jobs > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:
+                futures = [pool.submit(column_task, i) for i in range(p)]
+                for fut in concurrent.futures.as_completed(futures):
+                    i, grad_i, diag, row = fut.result()
+                    grad[i] = grad_i
+                    hess[i][i] = diag
+                    for j, value in row:
+                        hess[i][j] = hess[j][i] = value
+                    done += 1
+                    if done % step == 0:
+                        print("numeric Hessian %d/%d" % (done, p), file=sys.stderr, flush=True)
+        else:
+            for i in range(p):
+                i, grad_i, diag, row = column_task(i)
+                grad[i] = grad_i
+                hess[i][i] = diag
+                for j, value in row:
+                    hess[i][j] = hess[j][i] = value
+                done += 1
+                if done % step == 0:
+                    print("numeric Hessian %d/%d" % (done, p), file=sys.stderr, flush=True)
+        shutil.rmtree(eval_dir, ignore_errors=True)
+        evals = 1 + 2 * p + 4 * (p * (p - 1) // 2)
+    else:
+        eval_dir = os.path.join(d, "hessian_eval")
+        os.makedirs(eval_dir, exist_ok=True)
+
+        def gradient_task(index, sign):
             th = list(theta)
-            th[i] += hi; th[j] += hj; fpp = f(th)
-            th = list(theta)
-            th[i] += hi; th[j] -= hj; fpm = f(th)
-            th = list(theta)
-            th[i] -= hi; th[j] += hj; fmp = f(th)
-            th = list(theta)
-            th[i] -= hi; th[j] -= hj; fmm = f(th)
-            hess[i][j] = hess[j][i] = (fpp - fpm - fmp + fmm) / (4 * hi * hj)
+            th[index] += sign * h[index]
+            path = os.path.join(eval_dir, "ut_%d_%d.utreec" % (index, 0 if sign < 0 else 1))
+            write_utreec(path, theta_utreec(ut, th))
+            text = run_engine(engine, seqfile, freq, gpfile, nclass, path, param["alpha"],
+                              wtfile, mfile, 1)
+            return index, sign, parse_gradient(text, p)
+
+        lnl0, grad = g(theta)
+        hess = [[0.0] * p for _ in range(p)]
+        tasks = [(i, s) for i in range(p) for s in (-1, 1)]
+        results = {}
+        done = 0
+        step = max(1, p // 10)
+        if a.jobs > 1:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:
+                futures = [pool.submit(gradient_task, i, s) for i, s in tasks]
+                for fut in concurrent.futures.as_completed(futures):
+                    i, s, gv = fut.result()
+                    results[(i, s)] = gv
+                    done += 1
+                    if done % (2 * step) == 0:
+                        print("analytic Hessian %d/%d" % (done // 2, p), file=sys.stderr, flush=True)
+        else:
+            for i, s in tasks:
+                _, _, gv = gradient_task(i, s)
+                results[(i, s)] = gv
+                done += 1
+                if done % (2 * step) == 0:
+                    print("analytic Hessian %d/%d" % (done // 2, p), file=sys.stderr, flush=True)
+        for i in range(p):
+            hi = h[i]
+            gp_ = results[(i, 1)]
+            gm_ = results[(i, -1)]
+            for j in range(p):
+                hess[j][i] = (gp_[j] - gm_[j]) / (2 * hi)
+        for i in range(p):
+            for j in range(i + 1, p):
+                value = 0.5 * (hess[i][j] + hess[j][i])
+                hess[i][j] = hess[j][i] = value
+        shutil.rmtree(eval_dir, ignore_errors=True)
+        evals = 2 * p + 1
     with open(os.path.join(d, "gradient.txt"), "w", encoding="utf-8") as fh:
         fh.write("\n".join("%.17g" % x for x in grad) + "\n")
     with open(os.path.join(d, "hessian.txt"), "w", encoding="utf-8") as fh:
         for row in hess:
             fh.write(" ".join("%.17g" % x for x in row) + "\n")
     open(os.path.join(d, "lnL_at_mle.txt"), "w", encoding="utf-8").write("%.17g\n" % lnl0)
-    evals = 1 + 2 * p + 4 * (p * (p - 1) // 2)
-    print("GFmixF Hessian: p=%d evals=%d seconds=%.1f lnL=%.6f" %
-          (p, evals, time.time() - t0, lnl0))
+    print("GFmixF Hessian: mode=%s p=%d evals=%d seconds=%.1f lnL=%.6f" %
+          (a.hessian_mode, p, evals, time.time() - t0, lnl0))
 
 
 if __name__ == "__main__":

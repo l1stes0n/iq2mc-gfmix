@@ -29,6 +29,11 @@ Step by step:
 `--outdir` and `--prefix` select another location; `--model` sets the IQ-TREE starting
 model (default `LG+C20+F+G4`).
 
+For large trees the branch-length Hessian dominates the runtime. `--hessian-mode analytic`
+builds it from the engine's analytic gradient (about `2p` instead of `2p^2` evaluations), and
+`--threads N` also parallelizes the Hessian evaluations; the default mode is `numeric`.
+`--resume` continues the GFmixF fit from the last `gfmix.param` checkpoint.
+
 The alignment must be FASTA. The tree must be rooted and
 binary with calibration tags, e.g. `((A,B)'B(1.0,2.0,0.025,0.025)',C);`.
 

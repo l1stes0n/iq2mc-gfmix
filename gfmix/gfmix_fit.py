@@ -71,6 +71,7 @@ def main(argv=None):
     ap.add_argument("--classes", type=int, required=True)
     ap.add_argument("--groups", required=True)
     ap.add_argument("--threads", default="2")
+    ap.add_argument("--start-from", default="")
     a = ap.parse_args(argv)
     d = a.fit_dir
     names, seqs = read_fasta(os.path.join(d, "aln.fa"))
@@ -103,13 +104,27 @@ def main(argv=None):
     gpfile = os.path.join(d, "eval.gpfile")
     g1, g2 = a.groups.split(",")
     write_gpfile(gpfile, g1, g2)
+    start_u = utfile
+    start_w = os.path.join(d, "weights.txt")
+    start_a = open(os.path.join(d, "alpha.txt")).read().strip()
+    start_m = None
+    if a.start_from:
+        restart = read_param(a.start_from, m, a.classes + 1)
+        start_u = os.path.join(d, "start.utreec")
+        write_utreec(start_u, restart["utreec"])
+        start_w = os.path.join(d, "start.wtc")
+        write_weights(start_w, restart["weights"])
+        start_a = "%.17g" % restart["alpha"]
+        start_m = os.path.join(d, "start.mfile")
+        write_mfile(start_m, restart["gammas"])
     param = os.path.join(d, "gfmix.param")
-    fit = subprocess.run([gfmix, "-s", seqfile, "-c", str(a.classes + 1),
-                          "-f", os.path.join(d, "freq.dat"), "-u", utfile, "-g", gpfile,
-                          "-w", os.path.join(d, "weights.txt"),
-                          "-a", open(os.path.join(d, "alpha.txt")).read().strip(),
-                          "-e", "9", "-o", "6", "-b", str(a.threads), "-x", param],
-                         capture_output=True, text=True)
+    fit_cmd = [gfmix, "-s", seqfile, "-c", str(a.classes + 1),
+               "-f", os.path.join(d, "freq.dat"), "-u", start_u, "-g", gpfile,
+               "-w", start_w, "-a", start_a,
+               "-e", "9", "-o", "6", "-b", str(a.threads), "-x", param]
+    if start_m:
+        fit_cmd += ["-m", start_m]
+    fit = subprocess.run(fit_cmd, capture_output=True, text=True)
     if fit.returncode != 0 or not os.path.exists(param):
         raise SystemExit("GFmixF fit failed: " + (fit.stdout + fit.stderr)[-500:])
     nums = [x for x in fit.stdout.split() if re.fullmatch(r"[-+0-9.eE]+", x)]
