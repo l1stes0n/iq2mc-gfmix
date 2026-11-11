@@ -27,7 +27,7 @@ Step by step:
 `fit` writes the GFmixF fit, Hessian, and generated MCMCtree files to
 `results/<prefix>/`; `date` adds `<prefix>.gfmix.dates.csv` with the posterior node ages.
 `--outdir` and `--prefix` select another location; `--model` sets the IQ-TREE starting
-model (default `LG+C20+F+G4`). During the fit the L-BFGS iterations are appended to
+model (default `LG+C20+F+G4`). `--optimize N` selects the GFmixF parameter set optimized by the engine (`1` edges, `2` +alpha, `3` +weights, `4` gammas, `5` edges+gammas, `6` all; default `6`). During the fit the L-BFGS iterations are appended to
 `<prefix>/gfmix/fit_trace.log` for monitoring convergence.
 
 For large trees the branch-length Hessian dominates the runtime. `--hessian-mode analytic`

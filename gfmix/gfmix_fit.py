@@ -71,6 +71,7 @@ def main(argv=None):
     ap.add_argument("--classes", type=int, required=True)
     ap.add_argument("--groups", required=True)
     ap.add_argument("--threads", default="2")
+    ap.add_argument("--optimize", type=int, default=6, choices=range(1, 7))
     ap.add_argument("--start-from", default="")
     a = ap.parse_args(argv)
     d = a.fit_dir
@@ -121,7 +122,7 @@ def main(argv=None):
     fit_cmd = [gfmix, "-s", seqfile, "-c", str(a.classes + 1),
                "-f", os.path.join(d, "freq.dat"), "-u", start_u, "-g", gpfile,
                "-w", start_w, "-a", start_a,
-               "-e", "9", "-o", "6", "-b", str(a.threads), "-p", "1", "-x", param]
+               "-e", "9", "-o", str(a.optimize), "-b", str(a.threads), "-p", "1", "-x", param]
     if start_m:
         fit_cmd += ["-m", start_m]
     trace_path = os.path.join(d, "fit_trace.log")
