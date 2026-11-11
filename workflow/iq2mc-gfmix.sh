@@ -21,7 +21,7 @@ usage: bash workflow/iq2mc-gfmix.sh <fit|date|run> --aln FILE --tree FILE [optio
   --prefix NAME          output prefix (default: alignment basename)
   --outdir DIR           output directory (default: results)
   --threads N            threads for IQ-TREE, GFmixF and Hessian evaluation (default: 4)
-  --seed N               IQ-TREE seed (default: 1)
+  --seed N               IQ-TREE seed (default: random)
   --optimize N           parameter set optimized by GFmixF, 1-6 (default: 6 = all)
   --resume               continue the GFmixF fit from the last gfmix.param checkpoint
   --mcmctree-ctl FILE    MCMCtree control template (default: workflow/mcmctree.ctl)
@@ -37,7 +37,7 @@ case "$CMD" in
     *) usage >&2; die "unknown command: $CMD" ;;
 esac
 
-ALN=""; TREE=""; MODEL="LG+C20+F+G4"; PREFIX=""; OUTDIR="results"; THREADS=4; SEED=1
+ALN=""; TREE=""; MODEL="LG+C20+F+G4"; PREFIX=""; OUTDIR="results"; THREADS=4; SEED=""
 FORCE=0; MCMCTREE_CTL=""; HESSIAN_MODE="numeric"; RESUME=0; OPTIMIZE=6
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -83,8 +83,10 @@ stage_tree() {
     if [ -s "$RUN_DIR/$PREFIX.iqtree" ] && [ "$FORCE" = 0 ] \
         && [ "$(cat "$RUN_DIR/logs/model.txt" 2>/dev/null)" = "$MODEL" ]; then return 0; fi
     [ -s "$ALN_FA" ] || stage_prepare
+    local seed_args=()
+    [ -n "$SEED" ] && seed_args=(--seed "$SEED")
     ( cd "$RUN_DIR" && "$IQTREE" -redo -s "$ALN_FA" -m "$MODEL" -te "$TREE_PLAIN" \
-        --prefix "$PREFIX" -T "$THREADS" --seed "$SEED" > logs/iqtree.log 2>&1 ) \
+        --prefix "$PREFIX" -T "$THREADS" "${seed_args[@]}" > logs/iqtree.log 2>&1 ) \
         || { tail -n 30 "$RUN_DIR/logs/iqtree.log" >&2; die "IQ-TREE failed"; }
     echo "$MODEL" > "$RUN_DIR/logs/model.txt"
 }
