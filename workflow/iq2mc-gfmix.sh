@@ -22,7 +22,6 @@ usage: bash workflow/iq2mc-gfmix.sh <fit|date|run> --aln FILE --tree FILE [optio
   --outdir DIR           output directory (default: results)
   --threads N            threads for IQ-TREE, GFmixF and Hessian evaluation (default: 4)
   --seed N               IQ-TREE seed (default: random)
-  --optimize N           parameter set optimized by GFmixF, 1-6 (default: 6 = all)
   --resume               continue the GFmixF fit from the last gfmix.param checkpoint
   --mcmctree-ctl FILE    MCMCtree control template (default: workflow/mcmctree.ctl)
   --force                rerun existing outputs
@@ -38,7 +37,7 @@ case "$CMD" in
 esac
 
 ALN=""; TREE=""; MODEL="LG+C20+F+G4"; PREFIX=""; OUTDIR="results"; THREADS=4; SEED=""
-FORCE=0; MCMCTREE_CTL=""; HESSIAN_MODE="analytic"; RESUME=0; OPTIMIZE=6
+FORCE=0; MCMCTREE_CTL=""; RESUME=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --aln)          ALN="$2"; shift 2 ;;
@@ -49,8 +48,6 @@ while [ $# -gt 0 ]; do
         --threads)      THREADS="$2"; shift 2 ;;
         --seed)         SEED="$2"; shift 2 ;;
         --mcmctree-ctl) MCMCTREE_CTL="$2"; shift 2 ;;
-        --hessian-mode) HESSIAN_MODE="$2"; shift 2 ;;
-        --optimize)     OPTIMIZE="$2"; shift 2 ;;
         --resume)       RESUME=1; shift ;;
         --force)        FORCE=1; shift ;;
         -h|--help)      usage; exit 0 ;;
@@ -102,7 +99,7 @@ stage_fit() {
             --classes "$CLASSES" --groups GARP,FYMINK --seed-tree "$RUN_DIR/$PREFIX.treefile" \
             > "$G/prep.log" 2>&1 || { tail -n 20 "$G/prep.log" >&2; die "GFmixF input preparation failed"; }
         "$PYTHON" "$ROOT/gfmix/gfmix_fit.py" --fit-dir "$G" --gfmixf-dir "$GFMIXF" \
-            --classes "$CLASSES" --groups GARP,FYMINK --threads "$THREADS" --optimize "$OPTIMIZE" > "$G/fit.log" 2>&1 \
+            --classes "$CLASSES" --groups GARP,FYMINK --threads "$THREADS" > "$G/fit.log" 2>&1 \
             || { tail -n 20 "$G/fit.log" >&2; die "GFmixF fit failed"; }
         cat "$G/fit.log"
     elif [ "$RESUME" = 1 ]; then
@@ -111,7 +108,7 @@ stage_fit() {
             --classes "$CLASSES" --groups GARP,FYMINK --seed-tree "$RUN_DIR/$PREFIX.treefile" \
             > "$G/prep.log" 2>&1 || { tail -n 20 "$G/prep.log" >&2; die "GFmixF input preparation failed"; }
         "$PYTHON" "$ROOT/gfmix/gfmix_fit.py" --fit-dir "$G" --gfmixf-dir "$GFMIXF" \
-            --classes "$CLASSES" --groups GARP,FYMINK --threads "$THREADS" --optimize "$OPTIMIZE" \
+            --classes "$CLASSES" --groups GARP,FYMINK --threads "$THREADS" \
             --start-from "$G/gfmix.param" > "$G/fit.log" 2>&1 \
             || { tail -n 20 "$G/fit.log" >&2; die "GFmixF fit resume failed"; }
         cat "$G/fit.log"
@@ -119,7 +116,7 @@ stage_fit() {
     fi
     if [ ! -s "$G/hessian.txt" ] || [ "$FORCE" = 1 ] || [ "$force_hessian" = 1 ]; then
         "$PYTHON" "$ROOT/gfmix/gfmix_hessian.py" --fit-dir "$G" --gfmixf-dir "$GFMIXF" \
-            --hessian-mode "$HESSIAN_MODE" --jobs "$THREADS" > "$G/hessian.log" 2>&1 \
+            --jobs "$THREADS" > "$G/hessian.log" 2>&1 \
             || { tail -n 20 "$G/hessian.log" >&2; die "GFmixF Hessian failed"; }
         cat "$G/hessian.log"
     fi
