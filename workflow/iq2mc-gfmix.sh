@@ -38,7 +38,7 @@ case "$CMD" in
 esac
 
 ALN=""; TREE=""; MODEL="LG+C20+F+G4"; PREFIX=""; OUTDIR="results"; THREADS=4; SEED=""
-FORCE=0; MCMCTREE_CTL=""; HESSIAN_MODE="numeric"; RESUME=0; OPTIMIZE=6
+FORCE=0; MCMCTREE_CTL=""; HESSIAN_MODE="analytic"; RESUME=0; OPTIMIZE=6
 while [ $# -gt 0 ]; do
     case "$1" in
         --aln)          ALN="$2"; shift 2 ;;

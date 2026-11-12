@@ -30,9 +30,10 @@ Step by step:
 model (default `LG+C20+F+G4`). `--optimize N` selects the GFmixF parameter set optimized by the engine (`1` edges, `2` +alpha, `3` +weights, `4` gammas, `5` edges+gammas, `6` all; default `6`). During the fit the L-BFGS iterations are appended to
 `<prefix>/gfmix/fit_trace.log` for monitoring convergence.
 
-For large trees the branch-length Hessian dominates the runtime. `--hessian-mode analytic`
-builds it from the engine's analytic gradient (about `2p` instead of `2p^2` evaluations), and
-`--threads N` also parallelizes the Hessian evaluations; the default mode is `numeric`.
+For large trees the branch-length Hessian dominates the runtime. The default
+`--hessian-mode analytic` builds it from full-precision analytic gradients with Richardson
+extrapolation (about `4p` instead of `2p^2` evaluations); `--threads N` parallelizes the
+evaluations, and `--hessian-mode numeric` is kept for verification with likelihood differences.
 `--resume` continues the GFmixF fit from the last `gfmix.param` checkpoint.
 
 The alignment must be FASTA. The tree must be rooted and

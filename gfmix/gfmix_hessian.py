@@ -18,6 +18,8 @@ def run_engine(bin_path, seqfile, freq, gpfile, nclass, utfile, alpha, wtfile, m
     cmd = [bin_path, "-s", seqfile, "-c", str(nclass), "-f", freq, "-g", gpfile,
            "-e", "9", "-u", utfile, "-a", "%.17g" % alpha, "-w", wtfile,
            "-m", mfile, "-n", str(deriv)]
+    if deriv >= 1:
+        cmd += ["-q", "1"]
     out = subprocess.run(cmd, capture_output=True, text=True)
     if out.returncode != 0 or not out.stdout.strip():
         raise SystemExit("gfmix_lnl_align failed: " + (out.stdout + out.stderr)[-500:])
@@ -51,7 +53,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fit-dir", required=True)
     ap.add_argument("--gfmixf-dir", required=True)
-    ap.add_argument("--hessian-mode", choices=["numeric", "analytic"], default="numeric")
+    ap.add_argument("--hessian-mode", choices=["numeric", "analytic"], default="analytic")
     ap.add_argument("--h-rel", type=float, default=1e-4)
     ap.add_argument("--jobs", type=int, default=1)
     a = ap.parse_args()
@@ -152,49 +154,54 @@ def main():
         eval_dir = os.path.join(d, "hessian_eval")
         os.makedirs(eval_dir, exist_ok=True)
 
-        def gradient_task(index, sign):
+        def gradient_task(index, sign, scale):
             th = list(theta)
-            th[index] += sign * h[index]
-            path = os.path.join(eval_dir, "ut_%d_%d.utreec" % (index, 0 if sign < 0 else 1))
+            th[index] += sign * h[index] * scale
+            tag = "%d_%d_%d" % (index, 0 if sign < 0 else 1, 0 if scale < 1.0 else 1)
+            path = os.path.join(eval_dir, "ut_%s.utreec" % tag)
             write_utreec(path, theta_utreec(ut, th))
             text = run_engine(engine, seqfile, freq, gpfile, nclass, path, param["alpha"],
                               wtfile, mfile, 1)
-            return index, sign, parse_gradient(text, p)
+            return index, sign, scale, parse_gradient(text, p)
 
         lnl0, grad = g(theta)
         hess = [[0.0] * p for _ in range(p)]
-        tasks = [(i, s) for i in range(p) for s in (-1, 1)]
+        tasks = [(i, s, sc) for i in range(p) for s in (-1, 1) for sc in (1.0, 0.5)]
         results = {}
         done = 0
         step = max(1, p // 10)
         if a.jobs > 1:
             with concurrent.futures.ThreadPoolExecutor(max_workers=a.jobs) as pool:
-                futures = [pool.submit(gradient_task, i, s) for i, s in tasks]
+                futures = [pool.submit(gradient_task, i, s, sc) for i, s, sc in tasks]
                 for fut in concurrent.futures.as_completed(futures):
-                    i, s, gv = fut.result()
-                    results[(i, s)] = gv
+                    i, s, sc, gv = fut.result()
+                    results[(i, s, sc)] = gv
                     done += 1
-                    if done % (2 * step) == 0:
-                        print("analytic Hessian %d/%d" % (done // 2, p), file=sys.stderr, flush=True)
+                    if done % (4 * step) == 0:
+                        print("analytic Hessian %d/%d" % (done // 4, p), file=sys.stderr, flush=True)
         else:
-            for i, s in tasks:
-                _, _, gv = gradient_task(i, s)
-                results[(i, s)] = gv
+            for i, s, sc in tasks:
+                _, _, _, gv = gradient_task(i, s, sc)
+                results[(i, s, sc)] = gv
                 done += 1
-                if done % (2 * step) == 0:
-                    print("analytic Hessian %d/%d" % (done // 2, p), file=sys.stderr, flush=True)
+                if done % (4 * step) == 0:
+                    print("analytic Hessian %d/%d" % (done // 4, p), file=sys.stderr, flush=True)
         for i in range(p):
             hi = h[i]
-            gp_ = results[(i, 1)]
-            gm_ = results[(i, -1)]
+            gp1 = results[(i, 1, 1.0)]
+            gm1 = results[(i, -1, 1.0)]
+            gph = results[(i, 1, 0.5)]
+            gmh = results[(i, -1, 0.5)]
             for j in range(p):
-                hess[j][i] = (gp_[j] - gm_[j]) / (2 * hi)
+                ref = (gp1[j] - gm1[j]) / (2 * hi)
+                half = (gph[j] - gmh[j]) / hi
+                hess[j][i] = (4 * half - ref) / 3
         for i in range(p):
             for j in range(i + 1, p):
                 value = 0.5 * (hess[i][j] + hess[j][i])
                 hess[i][j] = hess[j][i] = value
         shutil.rmtree(eval_dir, ignore_errors=True)
-        evals = 2 * p + 1
+        evals = 4 * p + 1
     with open(os.path.join(d, "gradient.txt"), "w", encoding="utf-8") as fh:
         fh.write("\n".join("%.17g" % x for x in grad) + "\n")
     with open(os.path.join(d, "hessian.txt"), "w", encoding="utf-8") as fh:
