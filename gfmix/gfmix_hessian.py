@@ -15,6 +15,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--fit-dir", required=True)
     ap.add_argument("--gfmixf-dir", required=True)
+    ap.add_argument("--threads", type=int, default=1)
     a = ap.parse_args()
     d = a.fit_dir
     nclass = sum(1 for ln in open(os.path.join(d, "freq.dat"), encoding="utf-8") if ln.strip())
@@ -32,8 +33,8 @@ def main():
                     "-s", os.path.join(d, "eval.seqfile"), "-c", str(nclass),
                     "-f", os.path.join(d, "freq.dat"), "-u", utfile,
                     "-g", os.path.join(d, "eval.gpfile"), "-e", "9", "-n", "0",
-                    "-a", "%.17g" % param["alpha"], "-w", wtfile, "-m", mfile,
-                    "-H", hfile], check=True)
+                    "-b", str(a.threads), "-a", "%.17g" % param["alpha"],
+                    "-w", wtfile, "-m", mfile, "-H", hfile], check=True)
     rows = [ln.split() for ln in open(hfile, encoding="utf-8") if ln.strip()]
     os.remove(hfile)
     with open(os.path.join(d, "gradient.txt"), "w", encoding="utf-8") as fh:
