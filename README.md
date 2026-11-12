@@ -2,9 +2,9 @@
 
 Divergence-time estimation under the latest site-and-branch-heterogeneous GFmixF model
 (McCarthy, Susko & Roger 2026, *Systematic Biology*, syag040). The workflow uses IQ-TREE
-for maximum-likelihood starting values, fits GFmixF by full ML, computes the branch-length
-Hessian, and samples divergence times with the patched MCMCtree under the GFmixF
-approximate likelihood.
+for maximum-likelihood starting values, fits GFmixF by full ML, computes the exact
+branch-length Hessian analytically in one engine evaluation, and samples divergence times
+with the patched MCMCtree under the GFmixF approximate likelihood.
 
 ## Run
 

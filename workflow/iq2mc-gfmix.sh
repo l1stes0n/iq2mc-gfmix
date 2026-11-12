@@ -20,7 +20,7 @@ usage: bash workflow/iq2mc-gfmix.sh <fit|date|run> --aln FILE --tree FILE [optio
   --model STRING         IQ-TREE model for starting values (default: LG+C20+F+G4)
   --prefix NAME          output prefix (default: alignment basename)
   --outdir DIR           output directory (default: results)
-  --threads N            threads for IQ-TREE, GFmixF and Hessian evaluation (default: 4)
+  --threads N            threads for IQ-TREE and GFmixF fit (default: 4)
   --seed N               IQ-TREE seed (default: random)
   --resume               continue the GFmixF fit from the last gfmix.param checkpoint
   --mcmctree-ctl FILE    MCMCtree control template (default: workflow/mcmctree.ctl)
@@ -116,7 +116,7 @@ stage_fit() {
     fi
     if [ ! -s "$G/hessian.txt" ] || [ "$FORCE" = 1 ] || [ "$force_hessian" = 1 ]; then
         "$PYTHON" "$ROOT/gfmix/gfmix_hessian.py" --fit-dir "$G" --gfmixf-dir "$GFMIXF" \
-            --jobs "$THREADS" > "$G/hessian.log" 2>&1 \
+            > "$G/hessian.log" 2>&1 \
             || { tail -n 20 "$G/hessian.log" >&2; die "GFmixF Hessian failed"; }
         cat "$G/hessian.log"
     fi
