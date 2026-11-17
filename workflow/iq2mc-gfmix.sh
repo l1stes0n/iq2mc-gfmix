@@ -126,6 +126,7 @@ stage_fit() {
         --fit-dir "$G" --ctl-template "$MCMCTREE_CTL" \
         --ctl-out "$RUN_DIR/$PREFIX.gfmix.mcmctree.ctl" \
         --hessian-out "$RUN_DIR/$PREFIX.gfmix.mcmctree.hessian" \
+        --tree-out "$RUN_DIR/$PREFIX.gfmix.tree.nwk" \
         --out-prefix "$PREFIX.gfmix" --base-prefix "$PREFIX" > "$G/to_mcmctree.log" 2>&1 \
         || { cat "$G/to_mcmctree.log" >&2; die "Hessian conversion failed"; }
 }

@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--ctl-template", required=True)
     ap.add_argument("--ctl-out", required=True)
     ap.add_argument("--hessian-out", required=True)
+    ap.add_argument("--tree-out")
     ap.add_argument("--out-prefix", required=True)
     ap.add_argument("--base-prefix", required=True)
     a = ap.parse_args()
@@ -53,6 +54,9 @@ def main():
     ho = [[hess[i][j] for j in perm] for i in perm]
     lengths = {ch: bl[k] for k, (_, ch) in enumerate(edges)}
     tree_line = serialize_newick(tree, lengths=lengths)
+    if a.tree_out:
+        with open(a.tree_out, "w", encoding="utf-8") as fh:
+            fh.write(tree_line + "\n")
     with open(a.hessian_out, "w", encoding="utf-8") as fh:
         fh.write("\n%s\n\n%s\n\n%s\n\n%s\n\nHessian\n\n" % (
             len(tips), tree_line,
